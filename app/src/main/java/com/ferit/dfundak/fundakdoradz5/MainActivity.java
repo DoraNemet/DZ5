@@ -1,10 +1,13 @@
 package com.ferit.dfundak.fundakdoradz5;
 
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.location.Address;
 import android.location.Criteria;
 import android.location.Geocoder;
@@ -13,18 +16,24 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
+import android.media.MediaScannerConnection;
+import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
+import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.ContextCompat;
+import android.support.v4.content.FileProvider;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
+import android.telecom.Call;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import com.google.android.gms.maps.GoogleMap;
@@ -36,12 +45,14 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Locale;
 
+import static android.R.attr.id;
 import static android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT;
 import static android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK;
 
@@ -51,10 +62,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     static final int REQUEST_IMAGE_CAPTURE = 1;
 
     private String mCurrentPhotoPath;
-    private Bitmap mImageBitmap;
+    Location locationForName;
 
     TextView tvLocationText;
     Button takePicture;
+    ImageView imageView;
     LocationListener mLocationListener;
     LocationManager mLocationManager;
     GoogleMap mGoogleMap;
@@ -75,8 +87,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         this.mLocationManager = (LocationManager) this.getSystemService(LOCATION_SERVICE);
         this.mLocationListener = new SimpleLocationListener();
         this.takePicture = (Button) findViewById(R.id.btnTakePicture);
+        this.imageView = (ImageView) findViewById(R.id.imageView);
 
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED ) {
             takePicture.setEnabled(false);
         }
 
@@ -85,58 +98,104 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         this.takePicture.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                takePicture();
+                try {
+                    takePicture();
+                } catch (IOException e) {
+                    Log.e("Main activity", "Can't take picture");
+                }
             }
         });
     }
 
-    private void takePicture() {
-        Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-        if (cameraIntent.resolveActivity(getPackageManager()) != null) {
-            // Create the File where the photo should go
-            File photoFile = null;
+    //when button is clicked takePicture()
+    Uri photoURI;
+    private void takePicture() throws IOException {
+        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        // Check if there is camera activity to handle the intent
+        if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
+            // Create the File for photo
+            File filePhoto = null;
             try {
-                photoFile = createImageFile();
-            } catch (IOException ex) {
-                // Error occurred while creating the File
-                Log.i("MA", "IOException");
+                filePhoto = createImageFile();
+            } catch (IOException e) {
+                Log.i("Main Activity", "" + e);
+                return;
             }
-            // Continue only if the File was successfully created
-            if (photoFile != null) {
-                cameraIntent.putExtra(MediaStore.EXTRA_OUTPUT, Uri.fromFile(photoFile));
-                startActivityForResult(cameraIntent, REQUEST_IMAGE_CAPTURE);
+            if (filePhoto != null) {
+                photoURI = FileProvider.getUriForFile(this, this.getApplicationContext().getPackageName() + ".provider", createImageFile());
+                takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI);
+                startActivityForResult(takePictureIntent, REQUEST_IMAGE_CAPTURE);
             }
         }
-    }
-
-    private File createImageFile() throws IOException {
-        // Create an image file name
-        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-        String imageFileName = "JPEG_" + timeStamp + "_";
-        File storageDir = Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_PICTURES);
-        File image = File.createTempFile(
-                imageFileName,  // prefix
-                ".jpg",         // suffix
-                storageDir      // directory
-        );
-
-        // Save a file: path for use with ACTION_VIEW intents
-        mCurrentPhotoPath = "file:" + image.getAbsolutePath();
-        return image;
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_IMAGE_CAPTURE && resultCode == RESULT_OK) {
+            Uri imageUri = Uri.parse(mCurrentPhotoPath);
+            File file = new File(imageUri.getPath());
             try {
-                mImageBitmap = MediaStore.Images.Media.getBitmap(this.getContentResolver(), Uri.parse(mCurrentPhotoPath));
-            } catch (IOException e) {
-                e.printStackTrace();
+                //show image in ImageView
+                InputStream ims = new FileInputStream(file);
+                imageView.setImageBitmap(BitmapFactory.decodeStream(ims));
+            } catch (FileNotFoundException e) {
+                return;
             }
+            MediaScannerConnection.scanFile(MainActivity.this,
+                    new String[]{imageUri.getPath()}, null,
+                    new MediaScannerConnection.OnScanCompletedListener() {
+                        public void onScanCompleted(String path, Uri uri) {
+                        }
+                    });
+            //display notification
+            sendNotification();
         }
     }
 
+    //display notification that will open taken image
+    private void sendNotification() {
+        String msgText = "Click to open taken image";
+        Intent intent = new Intent(Intent.ACTION_VIEW, photoURI);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+        PendingIntent pendingIntent =
+                PendingIntent.getActivity(this.getApplicationContext(),
+                        id,
+                        intent,
+                        PendingIntent.FLAG_ONE_SHOT
+                );
+
+        NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this);
+        notificationBuilder.setAutoCancel(true)
+                .setContentTitle("Where is Dora?")
+                .setContentText(msgText)
+                .setSmallIcon(R.drawable.pin)
+                .setVibrate(new long[]{1000,1000})
+                .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
+                .setContentIntent(pendingIntent);
+        Notification notification = notificationBuilder.build();
+
+        NotificationManager notificationManager =
+                (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        notificationManager.notify(0,notification);
+    }
+
+
+    private File createImageFile() throws IOException {
+
+        String location = getLocationForName();
+        String imageFileName = "JPEG_" + location + "_";
+        File storageDir = new File(Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_DCIM), "Camera");
+        File image = File.createTempFile(
+                imageFileName,
+                ".jpg",
+                storageDir
+        );
+        mCurrentPhotoPath = "file:" + image.getAbsolutePath();
+        return image;
+    }
 
     private void initialize() {
         this.mMapFragment = (MapFragment) getFragmentManager().findFragmentById(R.id.fGoogleMap);
@@ -145,25 +204,23 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             @Override
             public void onMapClick(LatLng latLng) {
                 MarkerOptions newMarkerOptions = new MarkerOptions();
-                newMarkerOptions.icon(BitmapDescriptorFactory.fromResource(R.mipmap.ic_launcher));
+                newMarkerOptions.icon(BitmapDescriptorFactory.fromResource(R.drawable.pin));
                 newMarkerOptions.title("Here");
                 newMarkerOptions.position(latLng);
                 mGoogleMap.addMarker(newMarkerOptions);
 
                 releseMediaPlayer();
-
                 int result = mAudioManager.requestAudioFocus(afChangeListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
-
                 if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
 
                     mediaPlayer = MediaPlayer.create(MainActivity.this, R.raw.short_sound);
                     mediaPlayer.start();
                     mediaPlayer.setOnCompletionListener(mCompletionListener);
                 }
-
             }
         };
     }
+
     @Override
     public void onMapReady(GoogleMap googleMap) {
         this.mGoogleMap = googleMap;
@@ -204,6 +261,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     protected void onPause() {
         super.onPause();
         stopTracking();
+        releseMediaPlayer();
     }
 
     //starts GPS tracking
@@ -232,7 +290,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         return false;
     }
 
-    //requesting permission for location
+    //requesting permissions
     private void requestPermission() {
         ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.CAMERA, android.Manifest.permission.WRITE_EXTERNAL_STORAGE, android.Manifest.permission.ACCESS_FINE_LOCATION}, 0);
     }
@@ -245,24 +303,21 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 if (grantResults.length > 0) {
                     if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                         Log.d("MainActivity", "Permission granted");
-                        takePicture.setEnabled(true);
                     } else {
                         Log.d("MainActivity", "Permission denyed");
                         askForPermission();
                     }
                 }
         }
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
-            takePicture.setEnabled(true);
     }
 
     private void askForPermission() {
-        boolean shouldExplain = ActivityCompat.shouldShowRequestPermissionRationale(
+        boolean explain = ActivityCompat.shouldShowRequestPermissionRationale(
                 MainActivity.this, android.Manifest.permission.ACCESS_FINE_LOCATION);
-        if (shouldExplain) {
+        if (explain) {
             this.displayDialog();
         } else {
-            tvLocationText.setText("Application can't work without GPS permission");
+            tvLocationText.setText("Application can't work without all of the permissions");
         }
     }
 
@@ -287,6 +342,32 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 .show();
     }
 
+    private String getLocationForName(){
+        String name = "IMG_";
+        if (Geocoder.isPresent()) {
+            Geocoder geocoder = new Geocoder(this, Locale.getDefault());
+            try {
+                List<Address> nearByAddresses = geocoder.getFromLocation(
+                        locationForName.getLatitude(), locationForName.getLongitude(), 1);
+                if (nearByAddresses.size() > 0) {
+                    Address nearestAddress = nearByAddresses.get(0);
+                    StringBuilder stringBuilder = new StringBuilder();
+                    stringBuilder
+                            .append(nearestAddress.getCountryName())
+                            .append("_")
+                            .append(nearestAddress.getLocality())
+                            .append("_")
+                            .append(nearestAddress.getAddressLine(0));
+
+                    name = stringBuilder.toString();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+      return name;
+    }
+
     //show location on screen
     private void DisplayLocation(Location location) {
         String message = "Lat: " + location.getLatitude() + "\nLon:" + location.getLongitude() + "\n";
@@ -295,13 +376,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (Geocoder.isPresent()) {
             Geocoder geocoder = new Geocoder(this, Locale.getDefault());
             try {
-                List<Address> nearByAddresses = geocoder.getFromLocation(
-                        location.getLatitude(), location.getLongitude(), 1);
+                List<Address> nearByAddresses = geocoder.getFromLocation(location.getLatitude(), location.getLongitude(), 1);
                 if (nearByAddresses.size() > 0) {
                     StringBuilder stringBuilder = new StringBuilder();
                     Address nearestAddress = nearByAddresses.get(0);
-                    stringBuilder.append(nearestAddress.getAddressLine(0)).append("\n")
-                            .append(nearestAddress.getLocality()).append("\n")
+                    stringBuilder
+                            .append("Lokacija:\n")
+                            .append(nearestAddress.getAddressLine(0))
+                            .append("\n")
+                            .append(nearestAddress.getLocality())
+                            .append("\n")
                             .append(nearestAddress.getCountryName());
                     tvLocationText.append(stringBuilder.toString());
                 }
@@ -309,11 +393,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 e.printStackTrace();
             }
         }
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED  && hasLocationPermission() &&
+                ContextCompat.checkSelfPermission(this,android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED)
+            takePicture.setEnabled(true);
+        initialize();
     }
 
     private class SimpleLocationListener implements LocationListener {
         @Override
         public void onLocationChanged(Location location) {
+            locationForName = location;
             DisplayLocation(location);
         }
 
@@ -330,7 +419,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
+    //if focus is changed
     private AudioManager.OnAudioFocusChangeListener afChangeListener = new AudioManager.OnAudioFocusChangeListener() {
+
         @Override
         public void onAudioFocusChange(int focusChange) {
             if (focusChange == AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK || focusChange == AUDIOFOCUS_LOSS_TRANSIENT) {
@@ -344,6 +435,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     };
 
+    //if playing sound is completed
     private MediaPlayer.OnCompletionListener mCompletionListener = new MediaPlayer.OnCompletionListener() {
         @Override
         public void onCompletion(MediaPlayer mediaPlayer) {
@@ -358,6 +450,4 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             mAudioManager.abandonAudioFocus(afChangeListener);
         }
     }
-
-
 }
