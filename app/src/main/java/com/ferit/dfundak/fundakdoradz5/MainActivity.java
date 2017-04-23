@@ -159,12 +159,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         Intent intent = new Intent(Intent.ACTION_VIEW, photoURI);
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
-        PendingIntent pendingIntent =
-                PendingIntent.getActivity(this.getApplicationContext(),
-                        id,
-                        intent,
-                        PendingIntent.FLAG_ONE_SHOT
-                );
+        PendingIntent pendingIntent = PendingIntent.getActivity(this.getApplicationContext(), id, intent, PendingIntent.FLAG_ONE_SHOT);
 
         NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this);
         notificationBuilder.setAutoCancel(true)
@@ -176,23 +171,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 .setContentIntent(pendingIntent);
         Notification notification = notificationBuilder.build();
 
-        NotificationManager notificationManager =
-                (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        NotificationManager notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         notificationManager.notify(0,notification);
     }
 
 
     private File createImageFile() throws IOException {
-
         String location = getLocationForName();
         String imageFileName = "JPEG_" + location + "_";
-        File storageDir = new File(Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_DCIM), "Camera");
-        File image = File.createTempFile(
-                imageFileName,
-                ".jpg",
-                storageDir
-        );
+
+        File storageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Camera");
+        File image = File.createTempFile(imageFileName, ".jpg", storageDir);
         mCurrentPhotoPath = "file:" + image.getAbsolutePath();
         return image;
     }
@@ -212,7 +201,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 releseMediaPlayer();
                 int result = mAudioManager.requestAudioFocus(afChangeListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
                 if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-
                     mediaPlayer = MediaPlayer.create(MainActivity.this, R.raw.short_sound);
                     mediaPlayer.start();
                     mediaPlayer.setOnCompletionListener(mCompletionListener);
@@ -381,7 +369,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     StringBuilder stringBuilder = new StringBuilder();
                     Address nearestAddress = nearByAddresses.get(0);
                     stringBuilder
-                            .append("Lokacija:\n")
                             .append(nearestAddress.getAddressLine(0))
                             .append("\n")
                             .append(nearestAddress.getLocality())
