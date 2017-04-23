@@ -2,7 +2,9 @@ package com.ferit.dfundak.fundakdoradz5;
 
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.location.Address;
 import android.location.Criteria;
 import android.location.Geocoder;
@@ -11,7 +13,10 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
@@ -21,7 +26,6 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.MapFragment;
@@ -31,7 +35,10 @@ import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 
+import java.io.File;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -41,6 +48,11 @@ import static android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK;
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
 
     private static final int REQUEST_LOCATION_PERMISSION = 10;
+    static final int REQUEST_IMAGE_CAPTURE = 1;
+
+    private String mCurrentPhotoPath;
+    private Bitmap mImageBitmap;
+
     TextView tvLocationText;
     Button takePicture;
     LocationListener mLocationListener;
@@ -66,7 +78,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             takePicture.setEnabled(false);
-            ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.CAMERA, android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 0);
         }
 
         this.initialize();
@@ -74,39 +85,58 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         this.takePicture.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                takePicture(v);
+                takePicture();
             }
         });
     }
 
-    private AudioManager.OnAudioFocusChangeListener afChangeListener = new AudioManager.OnAudioFocusChangeListener() {
-        @Override
-        public void onAudioFocusChange(int focusChange) {
-            if (focusChange == AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK || focusChange == AUDIOFOCUS_LOSS_TRANSIENT) {
-                mediaPlayer.pause();
-                mediaPlayer.seekTo(0);
-            }  else if (focusChange == AudioManager.AUDIOFOCUS_LOSS ) {
-                releseMediaPlayer();
-            } else if (focusChange == AudioManager.AUDIOFOCUS_GAIN) {
-                mediaPlayer.start();
+    private void takePicture() {
+        Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        if (cameraIntent.resolveActivity(getPackageManager()) != null) {
+            // Create the File where the photo should go
+            File photoFile = null;
+            try {
+                photoFile = createImageFile();
+            } catch (IOException ex) {
+                // Error occurred while creating the File
+                Log.i("MA", "IOException");
+            }
+            // Continue only if the File was successfully created
+            if (photoFile != null) {
+                cameraIntent.putExtra(MediaStore.EXTRA_OUTPUT, Uri.fromFile(photoFile));
+                startActivityForResult(cameraIntent, REQUEST_IMAGE_CAPTURE);
             }
         }
-    };
+    }
 
-    private MediaPlayer.OnCompletionListener mCompletionListener = new MediaPlayer.OnCompletionListener() {
-        @Override
-        public void onCompletion(MediaPlayer mediaPlayer) {
-            releseMediaPlayer();
-        }
-    };
+    private File createImageFile() throws IOException {
+        // Create an image file name
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        String imageFileName = "JPEG_" + timeStamp + "_";
+        File storageDir = Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_PICTURES);
+        File image = File.createTempFile(
+                imageFileName,  // prefix
+                ".jpg",         // suffix
+                storageDir      // directory
+        );
 
-    private void releseMediaPlayer() {
-        if (mediaPlayer != null) {
-            mediaPlayer.release();
-            mediaPlayer = null;
-            mAudioManager.abandonAudioFocus(afChangeListener);
+        // Save a file: path for use with ACTION_VIEW intents
+        mCurrentPhotoPath = "file:" + image.getAbsolutePath();
+        return image;
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQUEST_IMAGE_CAPTURE && resultCode == RESULT_OK) {
+            try {
+                mImageBitmap = MediaStore.Images.Media.getBitmap(this.getContentResolver(), Uri.parse(mCurrentPhotoPath));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
+
 
     private void initialize() {
         this.mMapFragment = (MapFragment) getFragmentManager().findFragmentById(R.id.fGoogleMap);
@@ -147,11 +177,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
         this.mGoogleMap.setMyLocationEnabled(true);
     }
-
-    private void takePicture(View v) {
-        Toast.makeText(this, "cheese", Toast.LENGTH_SHORT).show();
-    }
-
 
     @Override
     protected void onStart() {
@@ -209,9 +234,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     //requesting permission for location
     private void requestPermission() {
-        String[] permissions = new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION};
-        ActivityCompat.requestPermissions(MainActivity.this,
-                permissions, REQUEST_LOCATION_PERMISSION);
+        ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.CAMERA, android.Manifest.permission.WRITE_EXTERNAL_STORAGE, android.Manifest.permission.ACCESS_FINE_LOCATION}, 0);
     }
 
     @Override
@@ -229,6 +252,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     }
                 }
         }
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
+            takePicture.setEnabled(true);
     }
 
     private void askForPermission() {
@@ -302,6 +327,35 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         @Override
         public void onProviderDisabled(String provider) {
+        }
+    }
+
+    private AudioManager.OnAudioFocusChangeListener afChangeListener = new AudioManager.OnAudioFocusChangeListener() {
+        @Override
+        public void onAudioFocusChange(int focusChange) {
+            if (focusChange == AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK || focusChange == AUDIOFOCUS_LOSS_TRANSIENT) {
+                mediaPlayer.pause();
+                mediaPlayer.seekTo(0);
+            }  else if (focusChange == AudioManager.AUDIOFOCUS_LOSS ) {
+                releseMediaPlayer();
+            } else if (focusChange == AudioManager.AUDIOFOCUS_GAIN) {
+                mediaPlayer.start();
+            }
+        }
+    };
+
+    private MediaPlayer.OnCompletionListener mCompletionListener = new MediaPlayer.OnCompletionListener() {
+        @Override
+        public void onCompletion(MediaPlayer mediaPlayer) {
+            releseMediaPlayer();
+        }
+    };
+
+    private void releseMediaPlayer() {
+        if (mediaPlayer != null) {
+            mediaPlayer.release();
+            mediaPlayer = null;
+            mAudioManager.abandonAudioFocus(afChangeListener);
         }
     }
 
